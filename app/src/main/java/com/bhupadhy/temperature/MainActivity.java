@@ -34,6 +34,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 	Sensor ambientTempSensor;
 	float ambientTempValue;
 	boolean hasSensor;
+	boolean sensorInitialized;
 
 	// None of my phones have a ambient temp sensor
 	// And you cant test sensors on an emulator but you could spoof the sensor data through cl
@@ -76,7 +77,6 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		initUI();
-		initializeSensor();
 		initializeTemperatures();
 	}
 
@@ -84,7 +84,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 	protected void onResume() {
 		super.onResume();
 		// Reregister
-		if (hasSensor) registerListener();
+		initializeSensor();
 	}
 
 	@Override
@@ -92,6 +92,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 		super.onPause();
 		// Have to unregister listener onPause to save battery
 		if (hasSensor) unregisterListener();
+		if(batteryInfoReceiver != null) unregisterReceiver(batteryInfoReceiver);
 	}
 
 	// Initialize TextViews / Buttons / OnClickListener
@@ -156,7 +157,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 					updateAmbientTempUI();
 				}
 			};
-			this.registerReceiver(batteryInfoReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+			registerReceiver(batteryInfoReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
 		}
 	}
 
@@ -180,11 +181,17 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 	}
 
 	public void registerListener() {
-		sManager.registerListener(this, ambientTempSensor, SensorManager.SENSOR_DELAY_NORMAL);
+		if(!sensorInitialized) {
+			sManager.registerListener(this, ambientTempSensor, SensorManager.SENSOR_DELAY_NORMAL);
+			sensorInitialized = true;
+		}
 	}
 
 	public void unregisterListener() {
-		sManager.unregisterListener(this);
+		if(sensorInitialized) {
+			sManager.unregisterListener(this);
+			sensorInitialized = false;
+		}
 	}
 
 	// Utility functions to make the strings look a little more pretty
