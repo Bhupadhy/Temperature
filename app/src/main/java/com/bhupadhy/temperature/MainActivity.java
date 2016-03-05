@@ -1,31 +1,211 @@
 package com.bhupadhy.temperature;
 
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
+import android.os.BatteryManager;
 import android.os.Bundle;
-import android.support.design.widget.FloatingActionButton;
-import android.support.design.widget.Snackbar;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.widget.Button;
+import android.widget.TextView;
+import android.widget.Toast;
 
-public class MainActivity extends AppCompatActivity {
+import java.util.ArrayList;
+import java.util.Random;
+
+public class MainActivity extends AppCompatActivity implements SensorEventListener {
+	// Static Variables
+	public final static String TAG = "MainActivity";
+	public final static String CelsiusSym = "\u2103";
+	public final static String FahrenheitSym = "\u2109";
+	public final static int NumOfDays = 5;
+
+	// Sensor Variables
+	SensorManager sManager;
+	Sensor ambientTempSensor;
+	float ambientTempValue;
+
+	// Nexus 6P has no temp sensor will remove before turn in
+	BroadcastReceiver batteryInfoReceiver;
+
+	// Current Scale Variable
+	char scale = 'C';
+
+	// Random Temperatures for Mon -> Fri
+	float[] temperatures;
+
+	// TextView/Button UI
+	TextView ambText;
+	TextView monText;
+	TextView tueText;
+	TextView wedText;
+	TextView thuText;
+	TextView friText;
+	Button convertButton;
+
+
+	// JNI Functions
+	public native String Hello();
+	public native float ConvertTemp(float temp,char scale);
+	public native float[] ConvertListTemps(float[] temps, char scale);
+
+	// Load JNI Libraries
+	static {
+		System.loadLibrary("temperature");
+	}
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
+		initUI();
+		initializeSensor();
+		initializeTemperatures();
+	}
+
+	private void initUI() {
 		setContentView(R.layout.activity_main);
 		Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
 		setSupportActionBar(toolbar);
-
-		FloatingActionButton fab = (FloatingActionButton) findViewById(R.id.fab);
-		fab.setOnClickListener(new View.OnClickListener() {
+		ambText = (TextView)findViewById(R.id.ambient_value_text);
+		monText = (TextView)findViewById(R.id.monday_value_text);
+		tueText = (TextView)findViewById(R.id.tuesday_value_text);
+		wedText = (TextView)findViewById(R.id.wednesday_value_text);
+		thuText = (TextView)findViewById(R.id.thursday_value_text);
+		friText = (TextView)findViewById(R.id.friday_value_text);
+		convertButton = (Button)findViewById(R.id.button_switch_scale);
+		convertButton.setOnClickListener(new View.OnClickListener() {
 			@Override
-			public void onClick(View view) {
-				Snackbar.make(view, "Replace with your own action", Snackbar.LENGTH_LONG)
-						.setAction("Action", null).show();
+			public void onClick(View v) {
+				toggleScale();
+				temperatures = ConvertListTemps(temperatures, scale);
+				updateAmbientTempUI();
+				updateTemperatureView();
 			}
 		});
+	}
+
+	@Override
+	protected void onResume() {
+		super.onResume();
+		//registerListener();
+	}
+
+	@Override
+	protected void onPause() {
+		super.onPause();
+		//unregisterListener();
+	}
+
+	/*
+	 * Sensor
+	 */
+	public void initializeSensor(){
+		sManager = (SensorManager) getSystemService(SENSOR_SERVICE);
+		if(checkAmbientTempSensor()) {
+			ambientTempSensor = sManager.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE);
+			// Register Sensor Event Listeners
+			registerListener();
+		} else {
+			Toast.makeText(this,"No ambient temperature sensor detected. Using battery temperature",Toast.LENGTH_SHORT).show();
+			batteryInfoReceiver = new BroadcastReceiver() {
+				@Override
+				public void onReceive(Context context, Intent intent) {
+					ambientTempValue = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE,0);
+					updateAmbientTempUI();
+				}
+			};
+			this.registerReceiver(batteryInfoReceiver,new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+		}
+	}
+
+	public void registerListener(){
+		sManager.registerListener(this, ambientTempSensor, SensorManager.SENSOR_DELAY_NORMAL);
+	}
+
+	public void unregisterListener(){
+		sManager.unregisterListener(this);
+	}
+
+	public void updateAmbientTempUI(){
+		String result;
+		if(scale == 'C'){
+			result = ambientTempValue + " " + CelsiusSym;
+
+		}else {
+			result = convertTemp(ambientTempValue, 'F');
+		}
+		ambText.setText(result);
+	}
+
+	@Override
+	public void onSensorChanged(SensorEvent event) {
+		ambientTempValue = event.values[0];
+		updateAmbientTempUI();
+	}
+
+	@Override
+	public void onAccuracyChanged(Sensor sensor, int accuracy) {
+
+	}
+
+	// Check if Ambient Temperature sensor is available on the device
+	public boolean checkAmbientTempSensor(){
+		return (sManager.getSensorList(Sensor.TYPE_AMBIENT_TEMPERATURE)).size() > 0;
+	}
+
+	// Utility
+	public String convertTemp(float val, char scale){
+		return formatTemp(ConvertTemp(val, scale));
+	}
+
+	public String formatTemp(float val){
+		StringBuilder result = new StringBuilder();
+		result.append(String.format("%f", val));
+		if(scale == 'C'){
+			result.append(" " + CelsiusSym);
+
+		} else {
+			result.append(" " + FahrenheitSym);
+		}
+		return result.toString();
+	}
+
+
+	public void initializeTemperatures(){
+		temperatures = new float[NumOfDays];
+		randomizeTemperatures();
+		updateTemperatureView();
+	}
+
+	public void randomizeTemperatures(){
+		Random rand = new Random();
+		float minVal = -20.0f;
+		float maxVal = 200.0f;
+		for(int i = 0; i < NumOfDays; i++){
+			temperatures[i] = (rand.nextFloat() * (maxVal - minVal) + minVal);
+		}
+	}
+
+	public void updateTemperatureView(){
+		if(temperatures.length < NumOfDays) return;
+		monText.setText(formatTemp(temperatures[0]));
+		tueText.setText(formatTemp(temperatures[1]));
+		wedText.setText(formatTemp(temperatures[2]));
+		thuText.setText(formatTemp(temperatures[3]));
+		friText.setText(formatTemp(temperatures[4]));
+	}
+
+	public void toggleScale(){
+		scale = scale == 'C' ? 'F':'C';
 	}
 
 	@Override
@@ -49,4 +229,6 @@ public class MainActivity extends AppCompatActivity {
 
 		return super.onOptionsItemSelected(item);
 	}
+
+
 }

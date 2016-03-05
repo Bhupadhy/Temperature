@@ -1,4 +1,10 @@
 <resources>
     <string name="app_name">Temperature</string>
     <string name="action_settings">Settings</string>
+    <string name="static_ambient"  >Ambient:   </string>
+    <string name="static_monday"   >Monday:    </string>
+    <string name="static_tuesday"  >Tuesday:   </string>
+    <string name="static_wednesday">Wednesday:</string>
+    <string name="static_thursday" >Thursday:  </string>
+    <string name="static_friday"   >Friday:    </string>
 </resources>
