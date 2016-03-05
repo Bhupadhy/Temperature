@@ -13,14 +13,13 @@ import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
 import android.util.Log;
-import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.View;
 import android.widget.Button;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import java.util.ArrayList;
 import java.util.Random;
 
 public class MainActivity extends AppCompatActivity implements SensorEventListener {
@@ -56,10 +55,15 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 	TextView friText;
 	Button convertButton;
 
-
-	// JNI Functions
+	// JNI Functions:
+	// Convert a single Java float temperature from one scale to another by calling the respective
+	// C++ temperature conversion function.
 	public native float ConvertTemp(float temp, char scale);
 
+	// Convert a Java float array of temperatures of one scale to the other scale by copying
+	// the elements in the array to a jfloat *ptr which can then be used to call ConvertTemp
+	// on each of the elements and then converted back into a jfloatArray and returned to the
+	// caller.
 	public native float[] ConvertListTemps(float[] temps, char scale);
 
 	// Load JNI Libraries
