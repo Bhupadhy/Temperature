@@ -10,11 +10,13 @@ using namespace std;
 #define  LOGI(...)  __android_log_print(ANDROID_LOG_INFO,LOG_TAG,__VA_ARGS__)
 #define  LOGE(...)  __android_log_print(ANDROID_LOG_ERROR,LOG_TAG,__VA_ARGS__)
 
-float CelciusToFahrenheit(float temp){
+
+// Temperature conversion calculation functions
+float CelsiusToFahrenheit(float temp){
     return (temp * 1.8) + 32;
 }
 
-float FahrenheitToCelcius(float temp){
+float FahrenheitToCelsius(float temp){
     return (temp - 32) / 1.8;
 }
 
@@ -22,65 +24,47 @@ float FahrenheitToCelcius(float temp){
 extern "C" {
 #endif
 
-jstring Java_com_bhupadhy_temperature_MainActivity_Hello(JNIEnv* env, jobject obj){
-    return env->NewStringUTF("Its me!!!!!");
-}
-
+// Convert a single Java float temperature from one scale to another by calling the respective
+// C++ temperature conversion function.
 jfloat Java_com_bhupadhy_temperature_MainActivity_ConvertTemp(JNIEnv* env, jobject obj, jfloat temp, jchar scale){
-    LOGI("ConvertTemp: Temperature: %f Scale: %c",temp,scale);
     jfloat result;
     if(scale == 'C'){
-        result = FahrenheitToCelcius(temp);
+        result = FahrenheitToCelsius(temp);
     } else if(scale == 'F'){
-        result = CelciusToFahrenheit(temp);
+        result = CelsiusToFahrenheit(temp);
     } else{
         //Scale Error
         LOGE("ScaleError: %c is not a recognized scale\n", scale);
     }
+    LOGI("Converted %f to %f Scale: %c",temp,result,scale);
     return result;
 }
 
+// Convert a Java float array of temperatures of one scale to the other scale by copying
+// the elements in the array to a jfloat *ptr which can then be used to call ConvertTemp
+// on each of the elements and then converted back into a jfloatArray and returned to the
+// caller.
 jfloatArray Java_com_bhupadhy_temperature_MainActivity_ConvertListTemps(JNIEnv* env, jobject obj, jfloatArray temps, jchar scale){
-//    jclass arrayClass = env->GetObjectClass(temps);
-//    jmethodID sizeMid = env->GetMethodID(arrayClass, "size", "()I");
-//    jmethodID getMid = env->GetMethodID(arrayClass, "get", "(I)Ljava/lang/Object;");
-//    jmethodID addMid = env->GetMethodID(arrayClass, "add", "(Ljava/lang/Object;)Z");
-
-    jclass floatClass = env->FindClass("java/lang/Float");
-    jmethodID floatValueMid = env->GetMethodID(floatClass, "floatValue", "()F");
     jboolean isCopy;
-    jvalue arg;
-    jint size = env->GetArrayLength(temps);//env->CallIntMethodA(temps, sizeMid, &arg);
+    jint size = env->GetArrayLength(temps);
+
+    // Gets the body of the primitive float array which will be valid until release is called
     jfloat *ptr = env->GetFloatArrayElements(temps, &isCopy);
-    //float* cppArray = new float[size];
-    //jobject obj = env->NewObject(arrayClass, env->GetMethodID(arrayClass, "<init>", "()V"));
+
+    // Loop through array. Convert and update each temp to the new scale passed in
     for(int i = 0; i < size; i++){
-        arg.i = i;
-//        jobject element = env->CallObjectMethodA(temps, getMid, &arg);
         ptr[i] = Java_com_bhupadhy_temperature_MainActivity_ConvertTemp(
                 env,
                 obj,
                 ptr[i],
                 scale
         );
-        //env->CallBooleanMethod(temps,addMid,cppArray[i]);
-        // Cant have unlimited active local refs
-        //env->DeleteLocalRef(element);
+
     }
-
-
-    // Create/Populate an Arraylist to pass back
-    //jobject nArrayList = env->NewGlobalRef(temps);
-    //jmethodID clearMid = env->GetMethodID(arrayClass, "clear", "()V");
-    //jvalue arg1;
-    //env->CallVoidMethod(temps,clearMid,&arg1);
-
-    //jfloatArray *jbuf = env->GetFloatArrayElements(cppArray,0);
-    //env->CallBooleanMethod(nArrayList,addMid,jbuf);
-//    for(int i = 0; i < size; i++){
-//        //arg1.i = i;
-//        env->CallBooleanMethod(nArrayList,addMid,cppArray[i]);
-//    }
+    // Inform VM: No longer need access to this ptr(C++) float array
+    // When 0 option is selected for third parameter the elements in ptr
+    // are copied and written to temps Java float array which will then
+    // contain the converted temperatures
     env->ReleaseFloatArrayElements(temps,ptr,0);
     return temps;
 }

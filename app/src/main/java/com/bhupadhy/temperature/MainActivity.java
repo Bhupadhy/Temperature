@@ -12,6 +12,7 @@ import android.os.BatteryManager;
 import android.os.Bundle;
 import android.support.v7.app.AppCompatActivity;
 import android.support.v7.widget.Toolbar;
+import android.util.Log;
 import android.view.View;
 import android.view.Menu;
 import android.view.MenuItem;
@@ -33,11 +34,14 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 	SensorManager sManager;
 	Sensor ambientTempSensor;
 	float ambientTempValue;
+	boolean hasSensor;
 
-	// Nexus 6P has no temp sensor will remove before turn in
+	// None of my phones have a ambient temp sensor
+	// And you cant test sensors on an emulator but you could spoof the sensor data through cl
+	// So I am using battery temp to test all the other function of the application.
 	BroadcastReceiver batteryInfoReceiver;
 
-	// Current Scale Variable
+	// Current Scale Variable initially in Celsius
 	char scale = 'C';
 
 	// Random Temperatures for Mon -> Fri
@@ -54,8 +58,8 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
 
 	// JNI Functions
-	public native String Hello();
-	public native float ConvertTemp(float temp,char scale);
+	public native float ConvertTemp(float temp, char scale);
+
 	public native float[] ConvertListTemps(float[] temps, char scale);
 
 	// Load JNI Libraries
@@ -63,6 +67,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 		System.loadLibrary("temperature");
 	}
 
+	// Life cycle methods
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
@@ -71,17 +76,32 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 		initializeTemperatures();
 	}
 
+	@Override
+	protected void onResume() {
+		super.onResume();
+		// Reregister
+		if (hasSensor) registerListener();
+	}
+
+	@Override
+	protected void onPause() {
+		super.onPause();
+		// Have to unregister listener onPause to save battery
+		if (hasSensor) unregisterListener();
+	}
+
+	// Initialize TextViews / Buttons / OnClickListener
 	private void initUI() {
 		setContentView(R.layout.activity_main);
 		Toolbar toolbar = (Toolbar) findViewById(R.id.toolbar);
 		setSupportActionBar(toolbar);
-		ambText = (TextView)findViewById(R.id.ambient_value_text);
-		monText = (TextView)findViewById(R.id.monday_value_text);
-		tueText = (TextView)findViewById(R.id.tuesday_value_text);
-		wedText = (TextView)findViewById(R.id.wednesday_value_text);
-		thuText = (TextView)findViewById(R.id.thursday_value_text);
-		friText = (TextView)findViewById(R.id.friday_value_text);
-		convertButton = (Button)findViewById(R.id.button_switch_scale);
+		ambText = (TextView) findViewById(R.id.ambient_value_text);
+		monText = (TextView) findViewById(R.id.monday_value_text);
+		tueText = (TextView) findViewById(R.id.tuesday_value_text);
+		wedText = (TextView) findViewById(R.id.wednesday_value_text);
+		thuText = (TextView) findViewById(R.id.thursday_value_text);
+		friText = (TextView) findViewById(R.id.friday_value_text);
+		convertButton = (Button) findViewById(R.id.button_switch_scale);
 		convertButton.setOnClickListener(new View.OnClickListener() {
 			@Override
 			public void onClick(View v) {
@@ -93,57 +113,47 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 		});
 	}
 
-	@Override
-	protected void onResume() {
-		super.onResume();
-		//registerListener();
+	public void updateTemperatureView() {
+		if (temperatures.length < NumOfDays) return;
+		monText.setText(formatTemp(temperatures[0]));
+		tueText.setText(formatTemp(temperatures[1]));
+		wedText.setText(formatTemp(temperatures[2]));
+		thuText.setText(formatTemp(temperatures[3]));
+		friText.setText(formatTemp(temperatures[4]));
 	}
 
-	@Override
-	protected void onPause() {
-		super.onPause();
-		//unregisterListener();
+	public void updateAmbientTempUI() {
+		String result;
+		if (scale == 'C') {
+			result = ambientTempValue + " " + CelsiusSym;
+
+		} else {
+			result = convertTemp(ambientTempValue, 'F');
+		}
+		ambText.setText(result);
 	}
 
 	/*
 	 * Sensor
 	 */
-	public void initializeSensor(){
+	public void initializeSensor() {
 		sManager = (SensorManager) getSystemService(SENSOR_SERVICE);
-		if(checkAmbientTempSensor()) {
+		if (checkAmbientTempSensor()) {
 			ambientTempSensor = sManager.getDefaultSensor(Sensor.TYPE_AMBIENT_TEMPERATURE);
 			// Register Sensor Event Listeners
 			registerListener();
-		} else {
-			Toast.makeText(this,"No ambient temperature sensor detected. Using battery temperature",Toast.LENGTH_SHORT).show();
+		} else { // Use battery temperature if there is no ambient temperature sensor
+			Toast.makeText(this, "No ambient temperature sensor detected. Using battery temperature", Toast.LENGTH_SHORT).show();
 			batteryInfoReceiver = new BroadcastReceiver() {
 				@Override
 				public void onReceive(Context context, Intent intent) {
-					ambientTempValue = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE,0);
+					// Divide by 10 because temperature is in tenths of a degree centigrade
+					ambientTempValue = intent.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0) / 10;
 					updateAmbientTempUI();
 				}
 			};
-			this.registerReceiver(batteryInfoReceiver,new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+			this.registerReceiver(batteryInfoReceiver, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
 		}
-	}
-
-	public void registerListener(){
-		sManager.registerListener(this, ambientTempSensor, SensorManager.SENSOR_DELAY_NORMAL);
-	}
-
-	public void unregisterListener(){
-		sManager.unregisterListener(this);
-	}
-
-	public void updateAmbientTempUI(){
-		String result;
-		if(scale == 'C'){
-			result = ambientTempValue + " " + CelsiusSym;
-
-		}else {
-			result = convertTemp(ambientTempValue, 'F');
-		}
-		ambText.setText(result);
 	}
 
 	@Override
@@ -154,23 +164,36 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
 	@Override
 	public void onAccuracyChanged(Sensor sensor, int accuracy) {
-
+		Log.i(TAG, "Sensor Accuracy changed to " + accuracy);
 	}
 
 	// Check if Ambient Temperature sensor is available on the device
-	public boolean checkAmbientTempSensor(){
-		return (sManager.getSensorList(Sensor.TYPE_AMBIENT_TEMPERATURE)).size() > 0;
+	public boolean checkAmbientTempSensor() {
+		if (sManager.getSensorList(Sensor.TYPE_AMBIENT_TEMPERATURE).size() > 0) {
+			hasSensor = true;
+		}
+		return hasSensor;
 	}
 
-	// Utility
-	public String convertTemp(float val, char scale){
+	public void registerListener() {
+		sManager.registerListener(this, ambientTempSensor, SensorManager.SENSOR_DELAY_NORMAL);
+	}
+
+	public void unregisterListener() {
+		sManager.unregisterListener(this);
+	}
+
+	// Utility functions to make the strings look a little more pretty
+	// This is where the JNI ConvertTemp gets called and the return float
+	// value is then formatted into a presentable string and returned
+	public String convertTemp(float val, char scale) {
 		return formatTemp(ConvertTemp(val, scale));
 	}
 
-	public String formatTemp(float val){
+	public String formatTemp(float val) {
 		StringBuilder result = new StringBuilder();
 		result.append(String.format("%f", val));
-		if(scale == 'C'){
+		if (scale == 'C') {
 			result.append(" " + CelsiusSym);
 
 		} else {
@@ -180,32 +203,27 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 	}
 
 
-	public void initializeTemperatures(){
+	public void initializeTemperatures() {
 		temperatures = new float[NumOfDays];
 		randomizeTemperatures();
 		updateTemperatureView();
 	}
 
-	public void randomizeTemperatures(){
+	// Generate random temperatures for 5 days (Mon->Fri) in the range of -20 to 200
+	// degrees Celsius
+	public void randomizeTemperatures() {
 		Random rand = new Random();
 		float minVal = -20.0f;
 		float maxVal = 200.0f;
-		for(int i = 0; i < NumOfDays; i++){
+		for (int i = 0; i < NumOfDays; i++) {
 			temperatures[i] = (rand.nextFloat() * (maxVal - minVal) + minVal);
 		}
 	}
 
-	public void updateTemperatureView(){
-		if(temperatures.length < NumOfDays) return;
-		monText.setText(formatTemp(temperatures[0]));
-		tueText.setText(formatTemp(temperatures[1]));
-		wedText.setText(formatTemp(temperatures[2]));
-		thuText.setText(formatTemp(temperatures[3]));
-		friText.setText(formatTemp(temperatures[4]));
-	}
 
-	public void toggleScale(){
-		scale = scale == 'C' ? 'F':'C';
+	// Changes temperature scale to opposite of what it currently is
+	public void toggleScale() {
+		scale = scale == 'C' ? 'F' : 'C';
 	}
 
 	@Override
