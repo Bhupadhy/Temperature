@@ -192,7 +192,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
 	public String formatTemp(float val) {
 		StringBuilder result = new StringBuilder();
-		result.append(String.format("%f", val));
+		result.append(String.format("%.2f", val));
 		if (scale == 'C') {
 			result.append(" " + CelsiusSym);
 
